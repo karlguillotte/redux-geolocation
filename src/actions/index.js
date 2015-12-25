@@ -1,66 +1,57 @@
 import { createAction } from 'redux-actions'
-import isGeolocationSupported from '../utils/IsGeolocationSupported'
+import * as CONSTANTS from '../constants'
 
 let watcherId = null
 
-export const GEOLOCATION_GET_POSITION = 'GEOLOCATION_GET_POSITION'
-export const GEOLOCATION_POSITION_CHANGED = 'GEOLOCATION_POSITION_CHANGED'
-export const GEOLOCATION_WATCH_POSITION_STOPPED = 'GEOLOCATION_WATCH_POSITION_STOPPED'
+const getPosition = createAction(CONSTANTS.GEOLOCATION_GET_POSITION)
 
-const locateActionCreator = (watch = false, positionOptions) => {
-    if (!isGeolocationSupported) {
-        return new Error({
+const changePosition = createAction(CONSTANTS.GEOLOCATION_POSITION_CHANGED)
+
+const stopPayloadCreator = () => {clearWatch()}
+export const stop = createAction(CONSTANTS.GEOLOCATION_WATCH_POSITION_STOPPED, stopPayloadCreator)
+
+export const locate = (watch = false, positionOptions) => dispatch => {
+    const { geolocation } = navigator
+    const onPositionResponse = position => dispatch(changePosition(position))
+    const onPositionError = error => dispatch(changePosition(createError(error)))
+
+    clearWatch()
+
+    if (geolocation) {
+        dispatch(getPosition())
+        if (watch) {
+            watcherId = geolocation.watchPosition(onPositionResponse, onPositionError, positionOptions)
+        } else {
+            geolocation.getCurrentPosition(onPositionResponse, onPositionError, positionOptions)
+        }
+    } else {
+        const error = new Error({
             code: 0,
             message: 'Geolocation not supported.',
         })
-    }
 
-    const { geolocation } = navigator
-
-    if (watch) {
-        watcherId = geolocation.watchPosition(onResponse, onError, positionOptions)
-    } else {
-        geolocation.getCurrentPosition(resolve, reject, positionOptions)
+        dispatch(getPosition(error))
     }
 }
-const stopActionCreator = () => {
 
-}
+function createError(error) {
+    const { code } = error
+    let { message } = error
 
-export const locate = createAction(GEOLOCATION_GET_POSITION, locateActionCreator)
-export const stop = createAction(GEOLOCATION_WATCH_POSITION_STOPPED, stopActionCreator)
-
-function onResponse(position) {
-    const lat = position.coords.latitude,
-        lng = position.coords.longitude,
-        latlng = new L.LatLng(lat, lng),
-        bounds = latlng.toBounds(position.coords.accuracy),
-        options = this._locateOptions
-
-    const data = {
-        latlng: latlng,
-        bounds: bounds,
-        timestamp: position.timestamp
-    }
-
-    for (const i in position.coords) {
-        if (typeof position.coords[i] === 'number') {
-            data[i] = position.coords[i]
+    if (!message) {
+        switch (code) {
+            case 1:
+                message = 'Permission denied'
+            case 2:
+                message = 'Position unavailable'
+            case 3:
+                message = 'Timeout'
+            default:
+                message = 'Error'
         }
     }
 
-    this.fire('locationfound', data)
-}
-
-function onError(error) {
-    const { code, message } = error;
-
-
-    message = error.message ||
-    (c === 1 ? 'permission denied' :
-    (c === 2 ? 'position unavailable' : 'timeout'))
-
-    this.fire('locationerror', {
+    return new Error({
         code,
         message: `Geolocation error: ${message}.`
     })
